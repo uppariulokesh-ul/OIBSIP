@@ -1,56 +1,52 @@
 import javax.swing.*;
 import java.awt.*;
-import java.sql.*;
-import java.util.Random;
+import java.util.*;
 
 public class OnlineReservationSystem {
-    private static final String DB_URL = "jdbc:sqlite:reservation.db";
+    private static Map<Integer, Reservation> reservationsMap = new HashMap<>();
+    private static Map<Integer, String> trainCatalog = new HashMap<>();
 
     public static void main(String[] args) {
-        initDatabase();
+        initData();
         SwingUtilities.invokeLater(() -> new LoginFrame().setVisible(true));
     }
 
-    private static Connection getConnection() throws SQLException {
-        try {
-            Class.forName("org.sqlite.JDBC");
-        } catch (ClassNotFoundException e) {
-            System.err.println("SQLite JDBC Driver not found!");
-        }
-        return DriverManager.getConnection(DB_URL);
+    private static void initData() {
+        trainCatalog.put(12727, "Godavari Express");
+        trainCatalog.put(12759, "Charminar Express");
+        trainCatalog.put(20833, "Vande Bharat Express");
+        trainCatalog.put(12760, "Tirupati Express");
     }
 
-    private static void initDatabase() {
-        try (Connection conn = getConnection(); Statement stmt = conn.createStatement()) {
-            stmt.execute("CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password TEXT)");
-            stmt.execute("INSERT OR IGNORE INTO users VALUES ('admin', 'admin123')");
+    static class Reservation {
+        int pnr;
+        String name;
+        int trainNo;
+        String trainName;
+        String classType;
+        String date;
+        String source;
+        String destination;
 
-            stmt.execute("CREATE TABLE IF NOT EXISTS trains (train_no INTEGER PRIMARY KEY, train_name TEXT)");
-            stmt.execute("INSERT OR IGNORE INTO trains VALUES (12727, 'Godavari Express')");
-            stmt.execute("INSERT OR IGNORE INTO trains VALUES (12759, 'Charminar Express')");
-            stmt.execute("INSERT OR IGNORE INTO trains VALUES (20833, 'Vande Bharat Express')");
-
-            stmt.execute("CREATE TABLE IF NOT EXISTS reservations (" +
-                    "pnr INTEGER PRIMARY KEY, " +
-                    "passenger_name TEXT, " +
-                    "train_no INTEGER, " +
-                    "train_name TEXT, " +
-                    "class_type TEXT, " +
-                    "journey_date TEXT, " +
-                    "source TEXT, " +
-                    "destination TEXT)");
-        } catch (SQLException e) {
-            e.printStackTrace();
+        public Reservation(int pnr, String name, int trainNo, String trainName, String classType, String date, String source, String destination) {
+            this.pnr = pnr;
+            this.name = name;
+            this.trainNo = trainNo;
+            this.trainName = trainName;
+            this.classType = classType;
+            this.date = date;
+            this.source = source;
+            this.destination = destination;
         }
     }
 
-    // Login Form
+    // 1. Login Screen
     static class LoginFrame extends JFrame {
         private JTextField userField = new JTextField(15);
         private JPasswordField passField = new JPasswordField(15);
 
         public LoginFrame() {
-            setTitle("Reservation System - Login");
+            setTitle("Train Reservation - Login");
             setSize(360, 200);
             setLocationRelativeTo(null);
             setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
@@ -76,30 +72,21 @@ public class OnlineReservationSystem {
             String pass = new String(passField.getPassword()).trim();
 
             if (user.isEmpty() || pass.isEmpty()) {
-                JOptionPane.showMessageDialog(this, "Fields cannot be empty!", "Error", JOptionPane.ERROR_MESSAGE);
+                JOptionPane.showMessageDialog(this, "Please enter username and password!", "Error", JOptionPane.WARNING_MESSAGE);
                 return;
             }
 
-            try (Connection conn = getConnection();
-                 PreparedStatement ps = conn.prepareStatement("SELECT * FROM users WHERE username = ? AND password = ?")) {
-                ps.setString(1, user);
-                ps.setString(2, pass);
-                ResultSet rs = ps.executeQuery();
-
-                if (rs.next()) {
-                    JOptionPane.showMessageDialog(this, "Login Successful!");
-                    dispose();
-                    new MainAppFrame().setVisible(true);
-                } else {
-                    JOptionPane.showMessageDialog(this, "Access Denied: Invalid credentials", "Error", JOptionPane.ERROR_MESSAGE);
-                }
-            } catch (SQLException ex) {
-                JOptionPane.showMessageDialog(this, "Database Error: " + ex.getMessage());
+            if (user.equalsIgnoreCase("admin") && pass.equals("admin123")) {
+                JOptionPane.showMessageDialog(this, "Login Successful!");
+                dispose();
+                new MainAppFrame().setVisible(true);
+            } else {
+                JOptionPane.showMessageDialog(this, "Access Denied: Invalid credentials", "Error", JOptionPane.ERROR_MESSAGE);
             }
         }
     }
 
-    // Main Reservation & Cancellation Window
+    // 2. Main Dashboard
     static class MainAppFrame extends JFrame {
         public MainAppFrame() {
             setTitle("Online Reservation & Cancellation System");
@@ -115,7 +102,7 @@ public class OnlineReservationSystem {
         }
     }
 
-    // Reservation Tab Panel
+    // 3. Reservation Tab
     static class ReservationPanel extends JPanel {
         private JTextField txtName = new JTextField();
         private JTextField txtTrainNo = new JTextField();
@@ -140,7 +127,7 @@ public class OnlineReservationSystem {
 
             formPanel.add(new JLabel("Passenger Name:")); formPanel.add(txtName);
             formPanel.add(new JLabel("Train Number (e.g. 12727):")); formPanel.add(txtTrainNo);
-            formPanel.add(new JLabel("Train Name (Auto-filled):")); formPanel.add(txtTrainName);
+            formPanel.add(new JLabel("Train Name:")); formPanel.add(txtTrainName);
             formPanel.add(new JLabel("Class Type:")); formPanel.add(cmbClass);
             formPanel.add(new JLabel("Date of Journey:")); formPanel.add(txtDate);
             formPanel.add(new JLabel("Source Station:")); formPanel.add(txtSource);
@@ -161,20 +148,13 @@ public class OnlineReservationSystem {
 
             try {
                 int trainNo = Integer.parseInt(tnoStr);
-                try (Connection conn = getConnection();
-                     PreparedStatement ps = conn.prepareStatement("SELECT train_name FROM trains WHERE train_no = ?")) {
-                    ps.setInt(1, trainNo);
-                    ResultSet rs = ps.executeQuery();
-                    if (rs.next()) {
-                        txtTrainName.setText(rs.getString("train_name"));
-                    } else {
-                        txtTrainName.setText("Train Not Found");
-                    }
+                if (trainCatalog.containsKey(trainNo)) {
+                    txtTrainName.setText(trainCatalog.get(trainNo));
+                } else {
+                    txtTrainName.setText("Special Express");
                 }
             } catch (NumberFormatException e) {
-                txtTrainName.setText("Numeric Train No Only");
-            } catch (SQLException e) {
-                e.printStackTrace();
+                txtTrainName.setText("Numbers Only");
             }
         }
 
@@ -200,32 +180,22 @@ public class OnlineReservationSystem {
                 return;
             }
 
-            if (!date.matches("^\\d{4}-\\d{2}-\\d{2}$")) {
-                JOptionPane.showMessageDialog(this, "Use format: YYYY-MM-DD", "Error", JOptionPane.ERROR_MESSAGE);
-                return;
-            }
-
             int pnr = 100000 + new Random().nextInt(900000);
+            Reservation r = new Reservation(pnr, name, trainNo, tname, classType, date, src, dst);
+            reservationsMap.put(pnr, r);
 
-            try (Connection conn = getConnection();
-                 PreparedStatement ps = conn.prepareStatement("INSERT INTO reservations VALUES (?, ?, ?, ?, ?, ?, ?, ?)")) {
-                ps.setInt(1, pnr);
-                ps.setString(2, name);
-                ps.setInt(3, trainNo);
-                ps.setString(4, tname);
-                ps.setString(5, classType);
-                ps.setString(6, date);
-                ps.setString(7, src);
-                ps.setString(8, dst);
-                ps.executeUpdate();
+            String confirmationMessage = String.format(
+                    "Booking Confirmed!\n\n" +
+                    "PNR Number: %d\n" +
+                    "Passenger: %s\n" +
+                    "Train: %d - %s\n" +
+                    "Class: %s\n" +
+                    "Date: %s\n" +
+                    "Route: %s to %s",
+                    pnr, name, trainNo, tname, classType, date, src, dst);
 
-                String msg = String.format("Booking Confirmed!\nPNR: %d\nName: %s\nTrain: %d - %s\nRoute: %s to %s",
-                        pnr, name, trainNo, tname, src, dst);
-                JOptionPane.showMessageDialog(this, msg, "Success", JOptionPane.INFORMATION_MESSAGE);
-                clearFields();
-            } catch (SQLException ex) {
-                JOptionPane.showMessageDialog(this, "Booking Failed: " + ex.getMessage());
-            }
+            JOptionPane.showMessageDialog(this, confirmationMessage, "Confirmation", JOptionPane.INFORMATION_MESSAGE);
+            clearFields();
         }
 
         private void clearFields() {
@@ -238,7 +208,7 @@ public class OnlineReservationSystem {
         }
     }
 
-    // Cancellation Tab Panel
+    // 4. Cancellation Tab
     static class CancellationPanel extends JPanel {
         private JTextField txtPnr = new JTextField(12);
         private JTextArea txtDetails = new JTextArea(10, 30);
@@ -250,11 +220,12 @@ public class OnlineReservationSystem {
 
             JPanel topPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
             JButton btnFetch = new JButton("Fetch Booking");
-            topPanel.add(new JLabel("Enter PNR:"));
+            topPanel.add(new JLabel("Enter PNR Number:"));
             topPanel.add(txtPnr);
             topPanel.add(btnFetch);
 
             txtDetails.setEditable(false);
+            txtDetails.setFont(new Font("Monospaced", Font.PLAIN, 13));
             btnCancel.setEnabled(false);
 
             btnFetch.addActionListener(e -> fetchDetails());
@@ -267,48 +238,51 @@ public class OnlineReservationSystem {
 
         private void fetchDetails() {
             String pnrStr = txtPnr.getText().trim();
-            if (pnrStr.isEmpty()) return;
+            if (pnrStr.isEmpty()) {
+                JOptionPane.showMessageDialog(this, "Please enter a PNR number.");
+                return;
+            }
 
             try {
                 int pnr = Integer.parseInt(pnrStr);
-                try (Connection conn = getConnection();
-                     PreparedStatement ps = conn.prepareStatement("SELECT * FROM reservations WHERE pnr = ?")) {
-                    ps.setInt(1, pnr);
-                    ResultSet rs = ps.executeQuery();
-                    if (rs.next()) {
-                        txtDetails.setText(
-                                "PNR: " + rs.getInt("pnr") + "\n" +
-                                "Name: " + rs.getString("passenger_name") + "\n" +
-                                "Train: " + rs.getInt("train_no") + " (" + rs.getString("train_name") + ")\n" +
-                                "Class: " + rs.getString("class_type") + "\n" +
-                                "Date: " + rs.getString("journey_date") + "\n" +
-                                "Route: " + rs.getString("source") + " to " + rs.getString("destination")
-                        );
-                        btnCancel.setEnabled(true);
-                    } else {
-                        txtDetails.setText("No reservation found for PNR: " + pnr);
-                        btnCancel.setEnabled(false);
-                    }
+                if (reservationsMap.containsKey(pnr)) {
+                    Reservation r = reservationsMap.get(pnr);
+                    txtDetails.setText(
+                            "================ BOOKING DETAILS ================\n" +
+                            " PNR Number      : " + r.pnr + "\n" +
+                            " Passenger Name  : " + r.name + "\n" +
+                            " Train           : " + r.trainNo + " (" + r.trainName + ")\n" +
+                            " Class           : " + r.classType + "\n" +
+                            " Date of Journey : " + r.date + "\n" +
+                            " Route           : " + r.source + " to " + r.destination + "\n" +
+                            "================================================="
+                    );
+                    btnCancel.setEnabled(true);
+                } else {
+                    txtDetails.setText("No reservation found matching PNR: " + pnr);
+                    btnCancel.setEnabled(false);
                 }
-            } catch (Exception ex) {
-                JOptionPane.showMessageDialog(this, "Enter valid numeric PNR");
+            } catch (NumberFormatException e) {
+                JOptionPane.showMessageDialog(this, "PNR must be numeric!");
             }
         }
 
         private void cancelBooking() {
-            int choice = JOptionPane.showConfirmDialog(this, "Are you sure you want to cancel?", "Confirm", JOptionPane.YES_NO_OPTION);
-            if (choice == JOptionPane.YES_OPTION) {
-                try (Connection conn = getConnection();
-                     PreparedStatement ps = conn.prepareStatement("DELETE FROM reservations WHERE pnr = ?")) {
-                    ps.setInt(1, Integer.parseInt(txtPnr.getText().trim()));
-                    ps.executeUpdate();
-                    JOptionPane.showMessageDialog(this, "Cancelled Successfully!");
-                    txtDetails.setText("");
-                    txtPnr.setText("");
-                    btnCancel.setEnabled(false);
-                } catch (Exception ex) {
-                    JOptionPane.showMessageDialog(this, "Error: " + ex.getMessage());
-                }
+            int confirm = JOptionPane.showConfirmDialog(
+                    this,
+                    "Are you sure you want to cancel this booking?",
+                    "Confirm Cancellation",
+                    JOptionPane.YES_NO_OPTION,
+                    JOptionPane.WARNING_MESSAGE
+            );
+
+            if (confirm == JOptionPane.YES_OPTION) {
+                int pnr = Integer.parseInt(txtPnr.getText().trim());
+                reservationsMap.remove(pnr);
+                JOptionPane.showMessageDialog(this, "Booking successfully cancelled.");
+                txtDetails.setText("");
+                txtPnr.setText("");
+                btnCancel.setEnabled(false);
             }
         }
     }
